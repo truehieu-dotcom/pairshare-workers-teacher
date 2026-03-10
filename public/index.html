@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PairShare cho giao vien</title>
+    <title>PairShare cho giáo viên</title>
     <meta
       name="description"
-      content="Chia se tai lieu nhanh cho giao vien bang ma Pair ID, luu tren GitHub va mo tren nhieu may khac nhau."
+      content="Chia sẻ tài liệu nhanh cho giáo viên bằng mã Pair ID, lưu trên GitHub và mở trên nhiều máy khác nhau."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
@@ -16,34 +16,34 @@
       <header class="hero">
         <div>
           <p class="eyebrow">PairShare for Teachers</p>
-          <h1>Gui tai lieu giua cac may trong truong chi voi 1 ma chia se</h1>
+          <h1>Gửi tài liệu giữa các máy trong trường chỉ với 1 mã chia sẻ</h1>
           <p class="hero-copy">
-            Tao 1 Pair ID, tai file len, roi mo cung ma do tren may tinh khac de tai ve ngay.
-            Giao dien duoc tinh chinh de giao vien thao tac nhanh, chu ro, nut to, it roi.
+            Tạo 1 Pair ID, tải file lên, rồi mở cùng mã đó trên máy tính khác để tải về ngay.
+            Giao diện được tinh chỉnh để giáo viên thao tác nhanh, chữ rõ, nút to, ít rối.
           </p>
         </div>
         <div class="hero-badges">
-          <span class="badge">Khong can USB</span>
-          <span class="badge">Dung tren phong giao vien</span>
-          <span class="badge">Hop cho file bai giang</span>
+          <span class="badge">Không cần USB</span>
+          <span class="badge">Dùng trong phòng giáo viên</span>
+          <span class="badge">Hợp cho file bài giảng</span>
         </div>
       </header>
 
-      <section class="guide-grid" aria-label="Huong dan nhanh">
+      <section class="guide-grid" aria-label="Hướng dẫn nhanh">
         <article class="guide-card">
           <span class="step">1</span>
-          <h2>Nhap ma chia se</h2>
-          <p>Dung mot ma de nhom tai lieu theo lop, mon hoc, hoac buoi hop.</p>
+          <h2>Nhập mã chia sẻ</h2>
+          <p>Dùng một mã để nhóm tài liệu theo lớp, môn học, hoặc buổi họp.</p>
         </article>
         <article class="guide-card">
           <span class="step">2</span>
-          <h2>Keo tha tai lieu</h2>
-          <p>Ho tro tai nhieu file cung luc de tranh thao tac lap di lap lai.</p>
+          <h2>Kéo thả tài liệu</h2>
+          <p>Hỗ trợ tải nhiều file cùng lúc để tránh thao tác lặp đi lặp lại.</p>
         </article>
         <article class="guide-card">
           <span class="step">3</span>
-          <h2>Mo tren may khac</h2>
-          <p>Chi can nhap cung Pair ID hoac mo link chia se la thay ngay file.</p>
+          <h2>Mở trên máy khác</h2>
+          <p>Chỉ cần nhập cùng Pair ID hoặc mở link chia sẻ là thấy ngay file.</p>
         </article>
       </section>
 
@@ -52,29 +52,29 @@
           <article class="panel control-panel">
             <div class="panel-head">
               <div>
-                <p class="panel-label">Buoc 1</p>
-                <h2>Ma Pair ID</h2>
+                <p class="panel-label">Bước 1</p>
+                <h2>Mã Pair ID</h2>
               </div>
               <div class="inline-actions wrap-on-mobile">
-                <button id="generatePairBtn" class="secondary-btn" type="button">Tao ma nhanh</button>
-                <button id="refreshBtn" class="ghost-btn" type="button">Lam moi danh sach</button>
+                <button id="generatePairBtn" class="secondary-btn" type="button">Tạo mã nhanh</button>
+                <button id="refreshBtn" class="ghost-btn" type="button">Làm mới danh sách</button>
               </div>
             </div>
 
             <div class="pair-grid">
               <label class="field">
-                <span>Nhap Pair ID</span>
+                <span>Nhập Pair ID</span>
                 <input
                   id="pairIdInput"
                   type="text"
                   maxlength="32"
-                  placeholder="Vi du: TOAN-9A, HOP-GV, VAN-12B"
+                  placeholder="Ví dụ: TOÁN-9A, HỌP-GV, VĂN-12B"
                   autocomplete="off"
                 />
               </label>
 
               <div class="field readonly-field">
-                <span>Link chia se</span>
+                <span>Link chia sẻ</span>
                 <div class="copy-row">
                   <input id="shareLinkInput" type="text" readonly />
                   <button id="copyLinkBtn" class="primary-btn small-btn" type="button">Copy link</button>
@@ -83,56 +83,56 @@
             </div>
 
             <div class="suggestion-row">
-              <span class="muted-label">Mau nhanh:</span>
-              <button class="chip" type="button" data-pair="TOAN-9A">TOAN-9A</button>
-              <button class="chip" type="button" data-pair="VAN-12B">VAN-12B</button>
-              <button class="chip" type="button" data-pair="HOP-GV">HOP-GV</button>
+              <span class="muted-label">Mẫu nhanh:</span>
+              <button class="chip" type="button" data-pair="TOAN-9A">TOÁN-9A</button>
+              <button class="chip" type="button" data-pair="VAN-12B">VĂN-12B</button>
+              <button class="chip" type="button" data-pair="HOP-GV">HỌP-GV</button>
             </div>
           </article>
 
           <article class="panel upload-panel">
             <div class="panel-head">
               <div>
-                <p class="panel-label">Buoc 2</p>
-                <h2>Tai tai lieu len</h2>
+                <p class="panel-label">Bước 2</p>
+                <h2>Tải tài liệu lên</h2>
               </div>
-              <div id="configHint" class="soft-note">Dang tai cau hinh...</div>
+              <div id="configHint" class="soft-note">Đang tải cấu hình...</div>
             </div>
 
             <label id="dropZone" class="drop-zone" for="fileInput">
               <input id="fileInput" type="file" multiple />
               <div class="drop-icon">+</div>
-              <h3>Keo tha file vao day hoac bam de chon file</h3>
+              <h3>Kéo thả file vào đây hoặc bấm để chọn file</h3>
               <p>
-                Nen dung cho bai giang, de cuong, tai lieu hop, bang bieu, file PDF, PowerPoint,
+                Nên dùng cho bài giảng, đề cương, tài liệu họp, bảng biểu, file PDF, PowerPoint,
                 Word.
               </p>
             </label>
 
             <div class="selected-files">
               <div class="selected-head">
-                <strong>File da chon</strong>
+                <strong>File đã chọn</strong>
                 <span id="selectedCount" class="selected-count">0 file</span>
               </div>
               <div id="selectedFilesList" class="file-pill-list empty-state-inline">
-                Chua co file nao duoc chon.
+                Chưa có file nào được chọn.
               </div>
             </div>
 
             <div class="inline-actions">
-              <button id="uploadBtn" class="primary-btn" type="button">Tai len ngay</button>
-              <button id="clearFilesBtn" class="ghost-btn" type="button">Bo chon file</button>
+              <button id="uploadBtn" class="primary-btn" type="button">Tải lên ngay</button>
+              <button id="clearFilesBtn" class="ghost-btn" type="button">Bỏ chọn file</button>
             </div>
           </article>
 
           <article class="panel files-panel">
             <div class="panel-head files-head">
               <div>
-                <p class="panel-label">Buoc 3</p>
-                <h2>Tai lieu trong ma hien tai</h2>
+                <p class="panel-label">Bước 3</p>
+                <h2>Tài liệu trong mã hiện tại</h2>
               </div>
               <div class="files-meta">
-                <span id="pairPill" class="pair-pill">Chua co ma</span>
+                <span id="pairPill" class="pair-pill">Chưa có mã</span>
                 <span id="fileCountPill" class="count-pill">0 file</span>
               </div>
             </div>
@@ -140,36 +140,36 @@
             <div id="statusBanner" class="status-banner hidden" role="status" aria-live="polite"></div>
 
             <div id="filesList" class="files-list empty-list">
-              Hay nhap Pair ID de xem tai lieu da chia se.
+              Hãy nhập Pair ID để xem tài liệu đã chia sẻ.
             </div>
           </article>
         </section>
 
         <aside class="side-column">
           <article class="panel tips-panel">
-            <h2>Meo dung cho giao vien</h2>
+            <h2>Mẹo dùng cho giáo viên</h2>
             <ul class="tips-list">
-              <li>Dung 1 ma rieng cho moi lop, vi du <strong>TOAN-9A</strong>.</li>
-              <li>Dung 1 ma cho buoi hop to, vi du <strong>HOP-GV</strong>.</li>
-              <li>Goi dong nghiep mo cung Pair ID tren may khac de tai ve tuc thi.</li>
-              <li>Sau khi tai len xong, bam <strong>Copy link</strong> de gui qua Zalo, email, hoac chat noi bo.</li>
+              <li>Dùng 1 mã riêng cho mỗi lớp, ví dụ <strong>TOÁN-9A</strong>.</li>
+              <li>Dùng 1 mã cho buổi họp tổ, ví dụ <strong>HỌP-GV</strong>.</li>
+              <li>Gọi đồng nghiệp mở cùng Pair ID trên máy khác để tải về tức thì.</li>
+              <li>Sau khi tải lên xong, bấm <strong>Copy link</strong> để gửi qua Zalo, email, hoặc chat nội bộ.</li>
             </ul>
           </article>
 
           <article class="panel notes-panel">
-            <h2>Trang thai he thong</h2>
+            <h2>Trạng thái hệ thống</h2>
             <dl class="stats-list">
               <div>
-                <dt>Pair ID dang dung</dt>
-                <dd id="currentPairText">Chua chon</dd>
+                <dt>Pair ID đang dùng</dt>
+                <dd id="currentPairText">Chưa chọn</dd>
               </div>
               <div>
-                <dt>So file dang thay</dt>
+                <dt>Số file đang thấy</dt>
                 <dd id="visibleFileCount">0</dd>
               </div>
               <div>
-                <dt>Cap nhat tu dong</dt>
-                <dd>Moi 10 giay</dd>
+                <dt>Cập nhật tự động</dt>
+                <dd>Mỗi 10 giây</dd>
               </div>
             </dl>
           </article>
