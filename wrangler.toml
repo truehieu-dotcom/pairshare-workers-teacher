@@ -1,0 +1,15 @@
+name = "pairshare-teacher"
+main = "./src/index.js"
+compatibility_date = "2026-03-10"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = [ "/api/*" ]
+
+[vars]
+APP_NAME = "PairShare cho giao vien"
+GITHUB_OWNER = "your-github-username-or-org"
+GITHUB_REPO = "pairshare-storage"
+GITHUB_BRANCH = "main"
+MAX_FILE_MB = "20"
