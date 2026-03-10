@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PairShare cho giao vien</title>
+    <meta
+      name="description"
+      content="Chia se tai lieu nhanh cho giao vien bang ma Pair ID, luu tren GitHub va mo tren nhieu may khac nhau."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">PairShare for Teachers</p>
+          <h1>Gui tai lieu giua cac may trong truong chi voi 1 ma chia se</h1>
+          <p class="hero-copy">
+            Tao 1 Pair ID, tai file len, roi mo cung ma do tren may tinh khac de tai ve ngay.
+            Giao dien duoc tinh chinh de giao vien thao tac nhanh, chu ro, nut to, it roi.
+          </p>
+        </div>
+        <div class="hero-badges">
+          <span class="badge">Khong can USB</span>
+          <span class="badge">Dung tren phong giao vien</span>
+          <span class="badge">Hop cho file bai giang</span>
+        </div>
+      </header>
+
+      <section class="guide-grid" aria-label="Huong dan nhanh">
+        <article class="guide-card">
+          <span class="step">1</span>
+          <h2>Nhap ma chia se</h2>
+          <p>Dung mot ma de nhom tai lieu theo lop, mon hoc, hoac buoi hop.</p>
+        </article>
+        <article class="guide-card">
+          <span class="step">2</span>
+          <h2>Keo tha tai lieu</h2>
+          <p>Ho tro tai nhieu file cung luc de tranh thao tac lap di lap lai.</p>
+        </article>
+        <article class="guide-card">
+          <span class="step">3</span>
+          <h2>Mo tren may khac</h2>
+          <p>Chi can nhap cung Pair ID hoac mo link chia se la thay ngay file.</p>
+        </article>
+      </section>
+
+      <main class="workspace">
+        <section class="main-column">
+          <article class="panel control-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-label">Buoc 1</p>
+                <h2>Ma Pair ID</h2>
+              </div>
+              <div class="inline-actions wrap-on-mobile">
+                <button id="generatePairBtn" class="secondary-btn" type="button">Tao ma nhanh</button>
+                <button id="refreshBtn" class="ghost-btn" type="button">Lam moi danh sach</button>
+              </div>
+            </div>
+
+            <div class="pair-grid">
+              <label class="field">
+                <span>Nhap Pair ID</span>
+                <input
+                  id="pairIdInput"
+                  type="text"
+                  maxlength="32"
+                  placeholder="Vi du: TOAN-9A, HOP-GV, VAN-12B"
+                  autocomplete="off"
+                />
+              </label>
+
+              <div class="field readonly-field">
+                <span>Link chia se</span>
+                <div class="copy-row">
+                  <input id="shareLinkInput" type="text" readonly />
+                  <button id="copyLinkBtn" class="primary-btn small-btn" type="button">Copy link</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="suggestion-row">
+              <span class="muted-label">Mau nhanh:</span>
+              <button class="chip" type="button" data-pair="TOAN-9A">TOAN-9A</button>
+              <button class="chip" type="button" data-pair="VAN-12B">VAN-12B</button>
+              <button class="chip" type="button" data-pair="HOP-GV">HOP-GV</button>
+            </div>
+          </article>
+
+          <article class="panel upload-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-label">Buoc 2</p>
+                <h2>Tai tai lieu len</h2>
+              </div>
+              <div id="configHint" class="soft-note">Dang tai cau hinh...</div>
+            </div>
+
+            <label id="dropZone" class="drop-zone" for="fileInput">
+              <input id="fileInput" type="file" multiple />
+              <div class="drop-icon">+</div>
+              <h3>Keo tha file vao day hoac bam de chon file</h3>
+              <p>
+                Nen dung cho bai giang, de cuong, tai lieu hop, bang bieu, file PDF, PowerPoint,
+                Word.
+              </p>
+            </label>
+
+            <div class="selected-files">
+              <div class="selected-head">
+                <strong>File da chon</strong>
+                <span id="selectedCount" class="selected-count">0 file</span>
+              </div>
+              <div id="selectedFilesList" class="file-pill-list empty-state-inline">
+                Chua co file nao duoc chon.
+              </div>
+            </div>
+
+            <div class="inline-actions">
+              <button id="uploadBtn" class="primary-btn" type="button">Tai len ngay</button>
+              <button id="clearFilesBtn" class="ghost-btn" type="button">Bo chon file</button>
+            </div>
+          </article>
+
+          <article class="panel files-panel">
+            <div class="panel-head files-head">
+              <div>
+                <p class="panel-label">Buoc 3</p>
+                <h2>Tai lieu trong ma hien tai</h2>
+              </div>
+              <div class="files-meta">
+                <span id="pairPill" class="pair-pill">Chua co ma</span>
+                <span id="fileCountPill" class="count-pill">0 file</span>
+              </div>
+            </div>
+
+            <div id="statusBanner" class="status-banner hidden" role="status" aria-live="polite"></div>
+
+            <div id="filesList" class="files-list empty-list">
+              Hay nhap Pair ID de xem tai lieu da chia se.
+            </div>
+          </article>
+        </section>
+
+        <aside class="side-column">
+          <article class="panel tips-panel">
+            <h2>Meo dung cho giao vien</h2>
+            <ul class="tips-list">
+              <li>Dung 1 ma rieng cho moi lop, vi du <strong>TOAN-9A</strong>.</li>
+              <li>Dung 1 ma cho buoi hop to, vi du <strong>HOP-GV</strong>.</li>
+              <li>Goi dong nghiep mo cung Pair ID tren may khac de tai ve tuc thi.</li>
+              <li>Sau khi tai len xong, bam <strong>Copy link</strong> de gui qua Zalo, email, hoac chat noi bo.</li>
+            </ul>
+          </article>
+
+          <article class="panel notes-panel">
+            <h2>Trang thai he thong</h2>
+            <dl class="stats-list">
+              <div>
+                <dt>Pair ID dang dung</dt>
+                <dd id="currentPairText">Chua chon</dd>
+              </div>
+              <div>
+                <dt>So file dang thay</dt>
+                <dd id="visibleFileCount">0</dd>
+              </div>
+              <div>
+                <dt>Cap nhat tu dong</dt>
+                <dd>Moi 10 giay</dd>
+              </div>
+            </dl>
+          </article>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
