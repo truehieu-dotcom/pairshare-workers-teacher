@@ -3,6 +3,8 @@ const state = {
   files: [],
   selectedFiles: [],
   maxFileMb: 20,
+  githubMaxFileMb: 25,
+  hasBackblaze: false,
   refreshInterval: null,
   pairInputTimer: null,
 };
@@ -145,8 +147,10 @@ async function loadConfig() {
       throw new Error(data.error || 'Khong doc duoc cau hinh.');
     }
     state.maxFileMb = Number(data.maxFileMb || 20);
+    state.githubMaxFileMb = Number(data.githubMaxFileMb || 25);
+    state.hasBackblaze = Boolean(data.hasBackblaze);
     document.title = data.appName || document.title;
-    els.configHint.textContent = `Gioi han moi file: ${state.maxFileMb} MB`;
+    els.configHint.textContent = buildConfigHint();
   } catch (error) {
     console.error(error);
     els.configHint.textContent = 'Khong tai duoc cau hinh, tam dung gioi han mac dinh 20 MB';
@@ -204,6 +208,18 @@ function handleSelectedFiles(files) {
   if (oversized.length) {
     setStatus(
       `Co ${oversized.length} file vuot gioi han ${state.maxFileMb} MB. Hay tach nho hoac doi cach luu tru.`,
+      'error',
+    );
+  }
+
+  const needB2 = files.filter(
+    (file) =>
+      file.size > state.githubMaxFileMb * 1024 * 1024 &&
+      file.size <= state.maxFileMb * 1024 * 1024,
+  );
+  if (needB2.length && !state.hasBackblaze) {
+    setStatus(
+      `Co ${needB2.length} file > ${state.githubMaxFileMb} MB can Backblaze B2 de upload.`,
       'error',
     );
   }
@@ -327,13 +343,14 @@ function renderFiles() {
     .map((file) => {
       const downloadUrl = getDownloadUrl(file.storedName);
       const icon = iconForFile(file.ext || '');
+      const sourceLabel = file.source === 'b2' ? 'Backblaze' : 'GitHub';
       return `
         <article class="file-card">
           <div class="file-icon">${icon}</div>
           <div class="file-main">
             <div class="file-name">${escapeHtml(file.name)}</div>
             <div class="file-meta">
-              ${formatBytes(file.size)} · Tai len luc ${formatDateTime(file.uploadedAt)}
+              ${formatBytes(file.size)} · ${sourceLabel} · Tai len luc ${formatDateTime(file.uploadedAt)}
             </div>
           </div>
           <div class="file-actions">
@@ -361,7 +378,18 @@ function getDownloadUrl(storedName) {
   const url = new URL('/api/download', window.location.origin);
   url.searchParams.set('pairId', state.pairId);
   url.searchParams.set('file', storedName);
+  const file = state.files.find((entry) => entry.storedName === storedName);
+  if (file && file.source) {
+    url.searchParams.set('source', file.source);
+  }
   return url.toString();
+}
+
+function buildConfigHint() {
+  if (state.hasBackblaze) {
+    return `Gioi han moi file: ${state.maxFileMb} MB (<=${state.githubMaxFileMb} MB luu GitHub, lon hon luu Backblaze)`;
+  }
+  return `Gioi han moi file: ${state.maxFileMb} MB (GitHub de xuat <=${state.githubMaxFileMb} MB)`;
 }
 
 function generatePairId() {
