@@ -356,7 +356,11 @@ async function downloadFromBackblaze(env, pairId, storedName) {
     },
   });
   if (!response.ok) {
-    throw await b2Error(response, `Khong the tai tep tu Backblaze (${response.status}).`);
+    const fallbackMessage =
+      response.status === 401
+        ? 'Khong the tai tep tu Backblaze (401). Kiem tra lai B2_KEY_ID, B2_APPLICATION_KEY va quyen readFiles cua key.'
+        : `Khong the tai tep tu Backblaze (${response.status}).`;
+    throw await b2Error(response, fallbackMessage);
   }
   return response;
 }
