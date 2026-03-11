@@ -1,6 +1,8 @@
 const GITHUB_API = 'https://api.github.com';
 const GITHUB_API_VERSION = '2022-11-28';
+const B2_API = 'https://api.backblazeb2.com';
 const DEFAULT_MAX_FILE_MB = 20;
+const DEFAULT_GITHUB_MAX_FILE_MB = 25;
 const DEFAULT_APP_NAME = 'PairShare cho giao vien';
 
 export default {
@@ -17,10 +19,13 @@ export default {
       }
 
       if (url.pathname === '/api/config' && request.method === 'GET') {
+        const githubMaxFileMb = getGithubMaxFileMb(env);
         return apiJson({
           ok: true,
           appName: env.APP_NAME || DEFAULT_APP_NAME,
           maxFileMb: getMaxFileMb(env),
+          githubMaxFileMb,
+          hasBackblaze: hasBackblazeConfig(env),
           samplePairIds: ['TOAN-9A', 'VAN-12B', 'HOP-GV'],
         });
       }
@@ -33,7 +38,7 @@ export default {
       }
 
       if (url.pathname === '/api/upload' && request.method === 'POST') {
-        ensureGithubConfig(env);
+        ensureAtLeastOneStorage(env);
         const formData = await request.formData();
         const pairId = sanitizePairId(String(formData.get('pairId') || ''));
         ensurePairId(pairId);
@@ -47,7 +52,9 @@ export default {
         }
 
         const maxFileMb = getMaxFileMb(env);
+        const githubMaxFileMb = getGithubMaxFileMb(env);
         const maxBytes = maxFileMb * 1024 * 1024;
+        const githubMaxBytes = githubMaxFileMb * 1024 * 1024;
         const uploaded = [];
 
         for (const file of fileEntries) {
@@ -62,30 +69,56 @@ export default {
           }
 
           const storedName = buildStoredFileName(file.name);
-          const repoPath = buildRepoPath(pairId, storedName);
           const arrayBuffer = await file.arrayBuffer();
-          const content = arrayBufferToBase64(arrayBuffer);
-          const message = `Upload ${decodeStoredOriginalName(storedName)} to ${pairId}`;
 
-          await githubRequest(
-            env,
-            `/repos/${encodeURIComponent(env.GITHUB_OWNER)}/${encodeURIComponent(env.GITHUB_REPO)}/contents/${encodeGithubPath(repoPath)}`,
-            {
-              method: 'PUT',
-              body: JSON.stringify({
-                message,
-                content,
-                branch: env.GITHUB_BRANCH || 'main',
-              }),
-            },
-          );
+          let source = 'github';
+          if (file.size > githubMaxBytes) {
+            if (!hasBackblazeConfig(env)) {
+              return apiJson(
+                {
+                  ok: false,
+                  error: `Tep ${file.name} vuot gioi han GitHub ${githubMaxFileMb} MB. Hay cau hinh Backblaze B2 de tai file lon hon.`,
+                },
+                400,
+              );
+            }
+            await uploadToBackblaze(env, pairId, storedName, arrayBuffer, file.type);
+            source = 'b2';
+          } else {
+            if (!hasGithubConfig(env)) {
+              return apiJson(
+                {
+                  ok: false,
+                  error: 'File nho dang duoc luu tren GitHub, nhung chua cau hinh GitHub.',
+                },
+                500,
+              );
+            }
+            const repoPath = buildRepoPath(pairId, storedName);
+            const content = arrayBufferToBase64(arrayBuffer);
+            const message = `Upload ${decodeStoredOriginalName(storedName)} to ${pairId}`;
+
+            await githubRequest(
+              env,
+              `/repos/${encodeURIComponent(env.GITHUB_OWNER)}/${encodeURIComponent(env.GITHUB_REPO)}/contents/${encodeGithubPath(repoPath)}`,
+              {
+                method: 'PUT',
+                body: JSON.stringify({
+                  message,
+                  content,
+                  branch: env.GITHUB_BRANCH || 'main',
+                }),
+              },
+            );
+          }
 
           uploaded.push({
             name: decodeStoredOriginalName(storedName),
             storedName,
-            path: repoPath,
+            path: buildRepoPath(pairId, storedName),
             size: file.size,
             uploadedAt: extractDateFromStoredName(storedName),
+            source,
           });
         }
 
@@ -93,17 +126,13 @@ export default {
       }
 
       if (url.pathname === '/api/download' && request.method === 'GET') {
-        ensureGithubConfig(env);
         const pairId = sanitizePairId(url.searchParams.get('pairId') || '');
         const storedName = url.searchParams.get('file') || '';
+        const source = (url.searchParams.get('source') || '').toLowerCase();
         ensurePairId(pairId);
         ensureStoredName(storedName);
 
-        const repoPath = buildRepoPath(pairId, storedName);
-        const response = await githubRawRequest(
-          env,
-          `/repos/${encodeURIComponent(env.GITHUB_OWNER)}/${encodeURIComponent(env.GITHUB_REPO)}/contents/${encodeGithubPath(repoPath)}?ref=${encodeURIComponent(env.GITHUB_BRANCH || 'main')}`,
-        );
+        const response = await downloadBySource(env, pairId, storedName, source);
 
         const headers = new Headers(response.headers);
         headers.set('Content-Disposition', contentDispositionFor(decodeStoredOriginalName(storedName)));
@@ -140,6 +169,11 @@ function getMaxFileMb(env) {
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_FILE_MB;
 }
 
+function getGithubMaxFileMb(env) {
+  const raw = Number.parseInt(env.GITHUB_MAX_FILE_MB || String(DEFAULT_GITHUB_MAX_FILE_MB), 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_GITHUB_MAX_FILE_MB;
+}
+
 function fallbackHtml(env) {
   return `<!doctype html>
 <html lang="vi">
@@ -165,7 +199,21 @@ function fallbackHtml(env) {
 }
 
 async function listFilesForPair(env, pairId) {
-  ensureGithubConfig(env);
+  ensureAtLeastOneStorage(env);
+
+  const files = [];
+  if (hasGithubConfig(env)) {
+    files.push(...(await listFilesFromGithub(env, pairId)));
+  }
+
+  if (hasBackblazeConfig(env)) {
+    files.push(...(await listFilesFromBackblaze(env, pairId)));
+  }
+
+  return files.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+}
+
+async function listFilesFromGithub(env, pairId) {
 
   const folderPath = `uploads/${pairId}`;
   const response = await githubRequest(
@@ -196,8 +244,61 @@ async function listFilesForPair(env, pairId) {
       sha: item.sha,
       uploadedAt: extractDateFromStoredName(item.name),
       ext: fileExtension(decodeStoredOriginalName(item.name)),
+      source: 'github',
     }))
     .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+}
+
+async function listFilesFromBackblaze(env, pairId) {
+  const prefix = `${buildRepoFolder(pairId)}/`;
+  const b2 = await b2Client(env);
+  const response = await fetch(`${b2.apiUrl}/b2api/v3/b2_list_file_names`, {
+    method: 'POST',
+    headers: {
+      Authorization: b2.authorizationToken,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      bucketId: env.B2_BUCKET_ID,
+      prefix,
+      maxFileCount: 1000,
+    }),
+  });
+
+  if (!response.ok) {
+    throw await b2Error(response, 'Khong lay duoc danh sach tep tu Backblaze.');
+  }
+
+  const payload = await response.json();
+  const entries = Array.isArray(payload.files) ? payload.files : [];
+  return entries
+    .filter((item) => item && item.action === 'upload' && item.fileName)
+    .map((item) => {
+      const storedName = String(item.fileName).slice(prefix.length);
+      return {
+        name: decodeStoredOriginalName(storedName),
+        storedName,
+        path: item.fileName,
+        size: item.size,
+        uploadedAt: extractDateFromStoredName(storedName),
+        ext: fileExtension(decodeStoredOriginalName(storedName)),
+        source: 'b2',
+      };
+    });
+}
+
+function hasGithubConfig(env) {
+  return Boolean(env.GITHUB_TOKEN && env.GITHUB_OWNER && env.GITHUB_REPO);
+}
+
+function hasBackblazeConfig(env) {
+  return Boolean(env.B2_KEY_ID && env.B2_APPLICATION_KEY && env.B2_BUCKET_ID && env.B2_BUCKET_NAME);
+}
+
+function ensureAtLeastOneStorage(env) {
+  if (!hasGithubConfig(env) && !hasBackblazeConfig(env)) {
+    throw httpError(500, 'Chua cau hinh storage. Hay cau hinh GitHub hoac Backblaze B2.');
+  }
 }
 
 function ensureGithubConfig(env) {
@@ -205,6 +306,146 @@ function ensureGithubConfig(env) {
   if (missing.length) {
     throw httpError(500, `Thieu cau hinh: ${missing.join(', ')}`);
   }
+}
+
+async function downloadBySource(env, pairId, storedName, source) {
+  if (source === 'b2') {
+    return downloadFromBackblaze(env, pairId, storedName);
+  }
+
+  if (source === 'github') {
+    return downloadFromGithub(env, pairId, storedName);
+  }
+
+  if (hasGithubConfig(env)) {
+    try {
+      return await downloadFromGithub(env, pairId, storedName);
+    } catch (error) {
+      if (error.status !== 404 || !hasBackblazeConfig(env)) {
+        throw error;
+      }
+    }
+  }
+
+  if (hasBackblazeConfig(env)) {
+    return downloadFromBackblaze(env, pairId, storedName);
+  }
+
+  throw httpError(500, 'Khong tim thay storage phu hop de tai tep.');
+}
+
+async function downloadFromGithub(env, pairId, storedName) {
+  ensureGithubConfig(env);
+  const repoPath = buildRepoPath(pairId, storedName);
+  return githubRawRequest(
+    env,
+    `/repos/${encodeURIComponent(env.GITHUB_OWNER)}/${encodeURIComponent(env.GITHUB_REPO)}/contents/${encodeGithubPath(repoPath)}?ref=${encodeURIComponent(env.GITHUB_BRANCH || 'main')}`,
+  );
+}
+
+async function downloadFromBackblaze(env, pairId, storedName) {
+  if (!hasBackblazeConfig(env)) {
+    throw httpError(500, 'Backblaze B2 chua duoc cau hinh.');
+  }
+
+  const b2 = await b2Client(env);
+  const fileName = buildRepoPath(pairId, storedName);
+  const response = await fetch(`${b2.downloadUrl}/file/${encodeURIComponent(env.B2_BUCKET_NAME)}/${encodeB2FileName(fileName)}`);
+  if (!response.ok) {
+    throw await b2Error(response, `Khong the tai tep tu Backblaze (${response.status}).`);
+  }
+  return response;
+}
+
+async function uploadToBackblaze(env, pairId, storedName, arrayBuffer, contentType) {
+  if (!hasBackblazeConfig(env)) {
+    throw httpError(500, 'Backblaze B2 chua duoc cau hinh.');
+  }
+
+  const b2 = await b2Client(env);
+  const uploadUrlRes = await fetch(`${b2.apiUrl}/b2api/v3/b2_get_upload_url`, {
+    method: 'POST',
+    headers: {
+      Authorization: b2.authorizationToken,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ bucketId: env.B2_BUCKET_ID }),
+  });
+
+  if (!uploadUrlRes.ok) {
+    throw await b2Error(uploadUrlRes, 'Khong lay duoc upload URL tu Backblaze.');
+  }
+
+  const uploadConfig = await uploadUrlRes.json();
+  const fileName = buildRepoPath(pairId, storedName);
+  const sha1 = await sha1Hex(arrayBuffer);
+  const uploadRes = await fetch(uploadConfig.uploadUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: uploadConfig.authorizationToken,
+      'X-Bz-File-Name': encodeB2FileName(fileName),
+      'Content-Type': contentType || 'b2/x-auto',
+      'Content-Length': String(arrayBuffer.byteLength),
+      'X-Bz-Content-Sha1': sha1,
+    },
+    body: arrayBuffer,
+  });
+
+  if (!uploadRes.ok) {
+    throw await b2Error(uploadRes, 'Upload Backblaze that bai.');
+  }
+}
+
+function buildRepoFolder(pairId) {
+  return `uploads/${pairId}`;
+}
+
+async function b2Client(env) {
+  const basic = btoa(`${env.B2_KEY_ID}:${env.B2_APPLICATION_KEY}`);
+  const response = await fetch(`${B2_API}/b2api/v3/b2_authorize_account`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Basic ${basic}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw await b2Error(response, 'Khong xac thuc duoc Backblaze B2.');
+  }
+
+  const payload = await response.json();
+  return {
+    authorizationToken: payload.authorizationToken,
+    apiUrl: payload.apiInfo?.storageApi?.apiUrl || payload.apiUrl,
+    downloadUrl: payload.apiInfo?.storageApi?.downloadUrl || payload.downloadUrl,
+  };
+}
+
+async function b2Error(response, fallbackMessage) {
+  let message = fallbackMessage;
+  try {
+    const data = await response.json();
+    if (data && data.message) {
+      message = data.message;
+    }
+  } catch {
+    // ignore json parse errors
+  }
+  return httpError(response.status, message);
+}
+
+function encodeB2FileName(value) {
+  return String(value)
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+}
+
+async function sha1Hex(arrayBuffer) {
+  const digest = await crypto.subtle.digest('SHA-1', arrayBuffer);
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 async function githubRequest(env, path, init = {}, options = {}) {
@@ -323,7 +564,7 @@ function extractDateFromStoredName(storedName) {
 }
 
 function buildRepoPath(pairId, storedName) {
-  return `uploads/${pairId}/${storedName}`;
+  return `${buildRepoFolder(pairId)}/${storedName}`;
 }
 
 function encodeGithubPath(path) {

@@ -1,4 +1,4 @@
-# PairShare cho giao vien - Cloudflare Workers + GitHub Storage
+# PairShare cho giao vien - Cloudflare Workers + GitHub + Backblaze B2
 
 Ung dung nay cho phep giao vien:
 
@@ -43,6 +43,7 @@ pairshare-workers-teacher/
   - ghi file vao repo theo duong dan `uploads/<PAIR_ID>/<timestamp>__<random>__<filename>`
   - doc danh sach file theo Pair ID
   - tai file ve qua endpoint raw content
+- Worker dung Backblaze B2 cho file lon hon nguong GitHub (mac dinh 25MB)
 
 ## Chuan bi GitHub
 
@@ -71,6 +72,16 @@ GITHUB_OWNER = "your-github-username-or-org"
 GITHUB_REPO = "pairshare-storage"
 GITHUB_BRANCH = "main"
 MAX_FILE_MB = "20"
+GITHUB_MAX_FILE_MB = "25"
+B2_BUCKET_NAME = "your-b2-bucket-name"
+B2_BUCKET_ID = "your-b2-bucket-id"
+```
+
+Them 2 secret cho Backblaze:
+
+```bash
+npx wrangler secret put B2_KEY_ID
+npx wrangler secret put B2_APPLICATION_KEY
 ```
 
 ### 3. Tao secret cho production
@@ -108,7 +119,10 @@ Lay cau hinh giao dien
 Lay danh sach file cua Pair ID
 
 ### POST `/api/upload`
-Tai nhieu file len GitHub
+Tai nhieu file len storage:
+
+- file `<= GITHUB_MAX_FILE_MB` se luu tren GitHub
+- file `> GITHUB_MAX_FILE_MB` se luu tren Backblaze B2
 
 FormData:
 - `pairId`
@@ -119,10 +133,9 @@ Tai 1 file ve tu GitHub
 
 ## Luu y quan trong
 
-- Ban nay phu hop cho **file nho den trung binh**
-- Nen giu `MAX_FILE_MB` o muc hop ly, vi du 10 - 25 MB
-- Neu anh muon luu file rat lon hoac file rat nhieu, nen doi storage sang **Cloudflare R2**
-- GitHub khong phai dich vu storage toi uu cho upload file lon lien tuc
+- GitHub co gioi han de xuat khoang 25MB/file khi upload qua API o app nay
+- File lon hon nguong do se duoc day sang Backblaze B2 neu da cau hinh
+- Nen giu `MAX_FILE_MB` o muc hop ly, vi du 50 - 200 MB tuy nhu cau
 
 ## Goi y Pair ID cho giao vien
 
