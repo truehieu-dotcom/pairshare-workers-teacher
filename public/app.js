@@ -3,6 +3,9 @@ const state = {
   files: [],
   selectedFiles: [],
   maxFileMb: 20,
+  largeFileThresholdMb: 25,
+  r2RetentionHours: 24,
+  hasR2Storage: false,
   refreshInterval: null,
   pairInputTimer: null,
 };
@@ -145,8 +148,11 @@ async function loadConfig() {
       throw new Error(data.error || 'Khong doc duoc cau hinh.');
     }
     state.maxFileMb = Number(data.maxFileMb || 20);
+    state.largeFileThresholdMb = Number(data.largeFileThresholdMb || 25);
+    state.r2RetentionHours = Number(data.r2RetentionHours || 24);
+    state.hasR2Storage = Boolean(data.hasR2Storage);
     document.title = data.appName || document.title;
-    els.configHint.textContent = `Gioi han moi file: ${state.maxFileMb} MB`;
+    els.configHint.textContent = `<= ${state.largeFileThresholdMb} MB luu GitHub, > ${state.largeFileThresholdMb} MB luu R2 (${state.r2RetentionHours}h). Gioi han toi da: ${state.maxFileMb} MB`;
   } catch (error) {
     console.error(error);
     els.configHint.textContent = 'Khong tai duoc cau hinh, tam dung gioi han mac dinh 20 MB';
@@ -203,7 +209,7 @@ function handleSelectedFiles(files) {
   const oversized = files.filter((file) => file.size > state.maxFileMb * 1024 * 1024);
   if (oversized.length) {
     setStatus(
-      `Co ${oversized.length} file vuot gioi han ${state.maxFileMb} MB. Hay tach nho hoac doi cach luu tru.`,
+      `Co ${oversized.length} file vuot gioi han ${state.maxFileMb} MB. Hay tach nho hoac doi gioi han server.`,
       'error',
     );
   }
@@ -333,7 +339,7 @@ function renderFiles() {
           <div class="file-main">
             <div class="file-name">${escapeHtml(file.name)}</div>
             <div class="file-meta">
-              ${formatBytes(file.size)} · Tai len luc ${formatDateTime(file.uploadedAt)}
+              ${formatBytes(file.size)} · ${file.source === 'r2' ? 'R2' : 'GitHub'} · Tai len luc ${formatDateTime(file.uploadedAt)}${file.expiresAt ? ` · Het han ${formatDateTime(file.expiresAt)}` : ''}
             </div>
           </div>
           <div class="file-actions">
@@ -361,6 +367,10 @@ function getDownloadUrl(storedName) {
   const url = new URL('/api/download', window.location.origin);
   url.searchParams.set('pairId', state.pairId);
   url.searchParams.set('file', storedName);
+  const matchedFile = state.files.find((item) => item.storedName === storedName);
+  if (matchedFile && matchedFile.source) {
+    url.searchParams.set('source', matchedFile.source);
+  }
   return url.toString();
 }
 
