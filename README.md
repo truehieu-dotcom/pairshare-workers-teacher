@@ -3,7 +3,7 @@
 Ung dung nay cho phep giao vien:
 
 - Tao 1 Pair ID de nhom tai lieu theo lop, mon hoc, hoac buoi hop
-- Tai nhieu file cung luc len kho luu tru GitHub
+- Tu dong luu file <= 25MB len GitHub va > 25MB len Cloudflare R2
 - Mo tren may khac bang cung Pair ID hoac link chia se
 - Tai xuong file nhanh ngay tren giao dien web
 
@@ -40,9 +40,10 @@ pairshare-workers-teacher/
 
 - Frontend goi API noi bo cua Worker
 - Worker dung GitHub REST API de:
-  - ghi file vao repo theo duong dan `uploads/<PAIR_ID>/<timestamp>__<random>__<filename>`
-  - doc danh sach file theo Pair ID
-  - tai file ve qua endpoint raw content
+  - ghi file <= 25MB vao GitHub theo duong dan `uploads/<PAIR_ID>/<timestamp>__<random>__<filename>`
+  - ghi file > 25MB vao R2 theo key `uploads-r2/<PAIR_ID>/<timestamp>__<random>__<filename>`
+  - doc hop nhat danh sach file tu GitHub + R2
+  - tu dong don file R2 qua Cron sau 24h de tiet kiem storage
 
 ## Chuan bi GitHub
 
@@ -70,16 +71,22 @@ APP_NAME = "PairShare cho giao vien"
 GITHUB_OWNER = "your-github-username-or-org"
 GITHUB_REPO = "pairshare-storage"
 GITHUB_BRANCH = "main"
-MAX_FILE_MB = "20"
+MAX_FILE_MB = "50"
+LARGE_FILE_THRESHOLD_MB = "25"
+R2_RETENTION_HOURS = "24"
 ```
 
-### 3. Tao secret cho production
+### 3. Tao bucket R2 + binding
+
+Tao bucket R2 (vi du: `pairshare-temp-uploads`) va cap binding `R2_UPLOADS` trong `wrangler.toml`.
+
+### 4. Tao secret cho production
 
 ```bash
 npx wrangler secret put GITHUB_TOKEN
 ```
 
-### 4. Tao file local de chay thu
+### 5. Tao file local de chay thu
 
 ```bash
 cp .dev.vars.example .dev.vars
@@ -108,21 +115,21 @@ Lay cau hinh giao dien
 Lay danh sach file cua Pair ID
 
 ### POST `/api/upload`
-Tai nhieu file len GitHub
+Tai nhieu file len storage tu dong (GitHub hoac R2 theo kich thuoc)
 
 FormData:
 - `pairId`
 - `files` (co the nhieu gia tri)
 
-### GET `/api/download?pairId=...&file=...`
-Tai 1 file ve tu GitHub
+### GET `/api/download?pairId=...&file=...&source=github|r2`
+Tai 1 file ve tu GitHub hoac R2
 
 ## Luu y quan trong
 
-- Ban nay phu hop cho **file nho den trung binh**
-- Nen giu `MAX_FILE_MB` o muc hop ly, vi du 10 - 25 MB
-- Neu anh muon luu file rat lon hoac file rat nhieu, nen doi storage sang **Cloudflare R2**
-- GitHub khong phai dich vu storage toi uu cho upload file lon lien tuc
+- File `<= LARGE_FILE_THRESHOLD_MB` se duoc luu tren GitHub
+- File `> LARGE_FILE_THRESHOLD_MB` se duoc luu tren Cloudflare R2
+- Cac file lon tren R2 se duoc xoa tu dong sau `R2_RETENTION_HOURS` (mac dinh 24h) qua Cron trigger
+- Dat `MAX_FILE_MB` lon hon nguong 25MB (vi du 50MB) de cho phep upload file lon
 
 ## Goi y Pair ID cho giao vien
 

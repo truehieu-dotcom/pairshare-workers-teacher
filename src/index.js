@@ -1,7 +1,10 @@
 const GITHUB_API = 'https://api.github.com';
 const GITHUB_API_VERSION = '2022-11-28';
 const DEFAULT_MAX_FILE_MB = 20;
+const DEFAULT_LARGE_FILE_THRESHOLD_MB = 25;
+const DEFAULT_R2_RETENTION_HOURS = 24;
 const DEFAULT_APP_NAME = 'PairShare cho giao vien';
+const R2_UPLOAD_PREFIX = 'uploads-r2';
 
 export default {
   async fetch(request, env) {
@@ -21,6 +24,9 @@ export default {
           ok: true,
           appName: env.APP_NAME || DEFAULT_APP_NAME,
           maxFileMb: getMaxFileMb(env),
+          largeFileThresholdMb: getLargeFileThresholdMb(env),
+          r2RetentionHours: getR2RetentionHours(env),
+          hasR2Storage: hasR2Storage(env),
           samplePairIds: ['TOAN-9A', 'VAN-12B', 'HOP-GV'],
         });
       }
@@ -47,6 +53,8 @@ export default {
         }
 
         const maxFileMb = getMaxFileMb(env);
+        const largeFileThresholdMb = getLargeFileThresholdMb(env);
+        const largeFileThresholdBytes = largeFileThresholdMb * 1024 * 1024;
         const maxBytes = maxFileMb * 1024 * 1024;
         const uploaded = [];
 
@@ -62,6 +70,35 @@ export default {
           }
 
           const storedName = buildStoredFileName(file.name);
+          const uploadedAt = extractDateFromStoredName(storedName);
+
+          if (file.size > largeFileThresholdBytes) {
+            ensureR2Storage(env);
+            const key = buildR2ObjectKey(pairId, storedName);
+            await env.R2_UPLOADS.put(key, file.stream(), {
+              httpMetadata: {
+                contentType: file.type || 'application/octet-stream',
+                contentDisposition: contentDispositionFor(decodeStoredOriginalName(storedName)),
+              },
+              customMetadata: {
+                pairId,
+                originalName: decodeStoredOriginalName(storedName),
+                uploadedAt,
+              },
+            });
+
+            uploaded.push({
+              name: decodeStoredOriginalName(storedName),
+              storedName,
+              path: key,
+              size: file.size,
+              uploadedAt,
+              source: 'r2',
+              expiresAt: calculateExpiresAt(uploadedAt, getR2RetentionHours(env)),
+            });
+            continue;
+          }
+
           const repoPath = buildRepoPath(pairId, storedName);
           const arrayBuffer = await file.arrayBuffer();
           const content = arrayBufferToBase64(arrayBuffer);
@@ -85,7 +122,8 @@ export default {
             storedName,
             path: repoPath,
             size: file.size,
-            uploadedAt: extractDateFromStoredName(storedName),
+            uploadedAt,
+            source: 'github',
           });
         }
 
@@ -96,8 +134,31 @@ export default {
         ensureGithubConfig(env);
         const pairId = sanitizePairId(url.searchParams.get('pairId') || '');
         const storedName = url.searchParams.get('file') || '';
+        const source = url.searchParams.get('source') || 'github';
         ensurePairId(pairId);
         ensureStoredName(storedName);
+        ensureStorageSource(source);
+
+        if (source === 'r2') {
+          ensureR2Storage(env);
+          const r2Key = buildR2ObjectKey(pairId, storedName);
+          const object = await env.R2_UPLOADS.get(r2Key);
+          if (!object) {
+            throw httpError(404, 'File khong ton tai hoac da het han tren R2.');
+          }
+
+          const headers = new Headers();
+          object.writeHttpMetadata(headers);
+          headers.set('Content-Disposition', contentDispositionFor(decodeStoredOriginalName(storedName)));
+          headers.set('Cache-Control', 'no-store');
+
+          return withCors(
+            new Response(object.body, {
+              status: 200,
+              headers,
+            }),
+          );
+        }
 
         const repoPath = buildRepoPath(pairId, storedName);
         const response = await githubRawRequest(
@@ -133,11 +194,28 @@ export default {
       return apiJson({ ok: false, error: message }, status);
     }
   },
+
+  async scheduled(_controller, env) {
+    if (!hasR2Storage(env)) {
+      return;
+    }
+    await deleteExpiredR2Objects(env);
+  },
 };
 
 function getMaxFileMb(env) {
   const raw = Number.parseInt(env.MAX_FILE_MB || String(DEFAULT_MAX_FILE_MB), 10);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_MAX_FILE_MB;
+}
+
+function getLargeFileThresholdMb(env) {
+  const raw = Number.parseInt(env.LARGE_FILE_THRESHOLD_MB || String(DEFAULT_LARGE_FILE_THRESHOLD_MB), 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_LARGE_FILE_THRESHOLD_MB;
+}
+
+function getR2RetentionHours(env) {
+  const raw = Number.parseInt(env.R2_RETENTION_HOURS || String(DEFAULT_R2_RETENTION_HOURS), 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_R2_RETENTION_HOURS;
 }
 
 function fallbackHtml(env) {
@@ -165,6 +243,14 @@ function fallbackHtml(env) {
 }
 
 async function listFilesForPair(env, pairId) {
+  const githubFiles = await listGithubFilesForPair(env, pairId);
+  const r2Files = await listR2FilesForPair(env, pairId);
+
+  return [...githubFiles, ...r2Files]
+    .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+}
+
+async function listGithubFilesForPair(env, pairId) {
   ensureGithubConfig(env);
 
   const folderPath = `uploads/${pairId}`;
@@ -196,8 +282,45 @@ async function listFilesForPair(env, pairId) {
       sha: item.sha,
       uploadedAt: extractDateFromStoredName(item.name),
       ext: fileExtension(decodeStoredOriginalName(item.name)),
-    }))
-    .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+      source: 'github',
+    }));
+}
+
+async function listR2FilesForPair(env, pairId) {
+  if (!hasR2Storage(env)) {
+    return [];
+  }
+
+  const objects = [];
+  let cursor;
+
+  do {
+    const listing = await env.R2_UPLOADS.list({
+      prefix: `${buildR2PairPrefix(pairId)}/`,
+      cursor,
+    });
+    objects.push(...listing.objects);
+    cursor = listing.truncated ? listing.cursor : undefined;
+  } while (cursor);
+
+  const retentionHours = getR2RetentionHours(env);
+
+  return objects
+    .map((object) => {
+      const storedName = object.key.split('/').pop() || object.key;
+      const uploadedAt = extractDateFromStoredName(storedName);
+      return {
+        name: decodeStoredOriginalName(storedName),
+        storedName,
+        path: object.key,
+        size: object.size,
+        uploadedAt,
+        ext: fileExtension(decodeStoredOriginalName(storedName)),
+        source: 'r2',
+        expiresAt: calculateExpiresAt(uploadedAt, retentionHours),
+      };
+    })
+    .filter((file) => !isExpired(file.expiresAt));
 }
 
 function ensureGithubConfig(env) {
@@ -205,6 +328,57 @@ function ensureGithubConfig(env) {
   if (missing.length) {
     throw httpError(500, `Thieu cau hinh: ${missing.join(', ')}`);
   }
+}
+
+function hasR2Storage(env) {
+  return Boolean(env.R2_UPLOADS);
+}
+
+function ensureR2Storage(env) {
+  if (!hasR2Storage(env)) {
+    throw httpError(500, 'R2 chua duoc cau hinh. Hay them binding R2_UPLOADS trong wrangler.toml.');
+  }
+}
+
+function ensureStorageSource(source) {
+  if (!['github', 'r2'].includes(source)) {
+    throw httpError(400, 'Nguon luu tru khong hop le.');
+  }
+}
+
+function buildR2PairPrefix(pairId) {
+  return `${R2_UPLOAD_PREFIX}/${pairId}`;
+}
+
+function buildR2ObjectKey(pairId, storedName) {
+  return `${buildR2PairPrefix(pairId)}/${storedName}`;
+}
+
+function calculateExpiresAt(uploadedAt, retentionHours) {
+  const createdAt = new Date(uploadedAt).getTime();
+  return new Date(createdAt + retentionHours * 60 * 60 * 1000).toISOString();
+}
+
+function isExpired(expiresAt) {
+  return new Date(expiresAt).getTime() <= Date.now();
+}
+
+async function deleteExpiredR2Objects(env) {
+  const retentionMs = getR2RetentionHours(env) * 60 * 60 * 1000;
+  let cursor;
+
+  do {
+    const listing = await env.R2_UPLOADS.list({ prefix: `${R2_UPLOAD_PREFIX}/`, cursor });
+    const expiredKeys = listing.objects
+      .filter((object) => Date.now() - new Date(object.uploaded).getTime() >= retentionMs)
+      .map((object) => object.key);
+
+    if (expiredKeys.length) {
+      await env.R2_UPLOADS.delete(expiredKeys);
+    }
+
+    cursor = listing.truncated ? listing.cursor : undefined;
+  } while (cursor);
 }
 
 async function githubRequest(env, path, init = {}, options = {}) {

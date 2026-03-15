@@ -2,6 +2,9 @@ name = "pairshare-teacher"
 main = "./src/index.js"
 compatibility_date = "2026-03-10"
 
+[triggers]
+crons = ["*/30 * * * *"]
+
 [assets]
 directory = "./public"
 binding = "ASSETS"
@@ -13,3 +16,9 @@ GITHUB_OWNER = "your-github-username-or-org"
 GITHUB_REPO = "pairshare-storage"
 GITHUB_BRANCH = "main"
 MAX_FILE_MB = "20"
+LARGE_FILE_THRESHOLD_MB = "25"
+R2_RETENTION_HOURS = "24"
+
+[[r2_buckets]]
+binding = "R2_UPLOADS"
+bucket_name = "pairshare-temp-uploads"
